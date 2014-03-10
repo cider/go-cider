@@ -48,12 +48,12 @@ func NewTransportFactory() *TransportFactory {
 	}
 }
 
-func (factory *TransportFactory) FeedConfigFromEnv(prefix string) error {
+func (factory *TransportFactory) ReadConfigFromEnv(prefix string) error {
 	return nutrition.Env(prefix).Feed(factory)
 }
 
-func (factory *TransportFactory) MustFeedConfigFromEnv(prefix string) *TransportFactory {
-	if err := factory.FeedConfigFromEnv(prefix); err != nil {
+func (factory *TransportFactory) MustReadConfigFromEnv(prefix string) *TransportFactory {
+	if err := factory.ReadConfigFromEnv(prefix); err != nil {
 		panic(err)
 	}
 	return factory

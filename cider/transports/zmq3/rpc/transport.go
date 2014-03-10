@@ -31,43 +31,43 @@ import (
 // from other channels.
 const CommandChannelBufferSize = 1000
 
-type TransportConfig struct {
+type TransportFactory struct {
 	Endpoint string
 	Sndhwm   int
 	Rcvhwm   int
 }
 
-func NewTransportConfig() *TransportConfig {
+func NewTransportFactory() *TransportFactory {
 	// Keep ZeroMQ defaults by default.
-	return &TransportConfig{
+	return &TransportFactory{
 		Sndhwm: 1000,
 		Rcvhwm: 1000,
 	}
 }
 
-func (config *TransportConfig) FeedFromEnv(prefix string) error {
-	return nutrition.Env(prefix).Feed(config)
+func (factory *TransportFactory) ReadConfigFromEnv(prefix string) error {
+	return nutrition.Env(prefix).Feed(factory)
 }
 
-func (config *TransportConfig) MustFeedFromEnv(prefix string) *TransportConfig {
-	if err := config.FeedFromEnv(prefix); err != nil {
+func (factory *TransportFactory) MustReadConfigFromEnv(prefix string) *TransportFactory {
+	if err := factory.ReadConfigFromEnv(prefix); err != nil {
 		panic(err)
 	}
-	return config
+	return factory
 }
 
-func (config *TransportConfig) IsComplete() error {
-	if config.Endpoint == "" {
+func (factory *TransportFactory) IsFullyConfigured() error {
+	if factory.Endpoint == "" {
 		return &services.ErrMissingConfig{"ROUTER endpoint", "ZeroMQ 3.x RPC transport"}
 	}
 	return nil
 }
 
-func (config *TransportConfig) MustBeComplete() *TransportConfig {
-	if err := config.IsComplete(); err != nil {
+func (factory *TransportFactory) MustBeFullyConfigured() *TransportFactory {
+	if err := factory.IsFullyConfigured(); err != nil {
 		panic(err)
 	}
-	return config
+	return factory
 }
 
 type Transport struct {
@@ -90,9 +90,9 @@ type Transport struct {
 	errorCh     chan error
 }
 
-func (config *TransportConfig) NewTransport(identity string) (rpc.Transport, error) {
+func (factory *TransportFactory) NewTransport(identity string) (rpc.Transport, error) {
 	// Make sure the config is complete.
-	config.MustBeComplete()
+	factory.MustBeFullyConfigured()
 
 	// Set up the 0MQ socket.
 	dealer, err := zmq.NewSocket(zmq.DEALER)
@@ -105,17 +105,17 @@ func (config *TransportConfig) NewTransport(identity string) (rpc.Transport, err
 		return nil, err
 	}
 
-	if err := dealer.SetSndhwm(config.Sndhwm); err != nil {
+	if err := dealer.SetSndhwm(factory.Sndhwm); err != nil {
 		dealer.Close()
 		return nil, err
 	}
 
-	if err := dealer.SetRcvhwm(config.Rcvhwm); err != nil {
+	if err := dealer.SetRcvhwm(factory.Rcvhwm); err != nil {
 		dealer.Close()
 		return nil, err
 	}
 
-	if err := dealer.Connect(config.Endpoint); err != nil {
+	if err := dealer.Connect(factory.Endpoint); err != nil {
 		dealer.Close()
 		return nil, err
 	}

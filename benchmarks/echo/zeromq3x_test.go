@@ -55,9 +55,9 @@ func benchmarkZeroMQ3x(b *testing.B, endpoint string) {
 
 	// Set up an RPC service instance using ZeroMQ 3.x IPC transport.
 	srv, err := rpc.NewService(func() (rpc.Transport, error) {
-		config := zmq3client.NewTransportConfig()
-		config.Endpoint = endpoint
-		return config.NewTransport("Call#" + mustRandomString())
+		factory := zmq3client.NewTransportFactory()
+		factory.Endpoint = endpoint
+		return factory.NewTransport("Call#" + mustRandomString())
 	})
 	if err != nil {
 		b.Fatal(err)

@@ -51,24 +51,14 @@ func main() {
 	var (
 		signalCh    = make(chan os.Signal, 1)
 		closeCh     = make(chan struct{})
-		interruptCh = make(chan struct{})
 	)
 	signal.Notify(signalCh, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		select {
-		case <-signalCh:
-			log.Println("Signal received, terminating...")
-			close(interruptCh)
-		case <-closeCh:
-			close(interruptCh)
-		}
-	}()
 
 	// Initialise PubSub service from environmental variables.
 	srv, err := pubsub.NewService(func() (pubsub.Transport, error) {
-		config := zpubsub.NewTransportConfig()
-		config.MustFeedFromEnv("CIDER_ZMQ3_PUBSUB_").MustBeComplete()
-		return zpubsub.NewTransport("Subscriber#"+MustRandomString(), config)
+		factory := zpubsub.NewTransportFactory()
+		factory.MustReadConfigFromEnv("CIDER_ZMQ3_PUBSUB_").MustBeFullyConfigured()
+		return factory.NewTransport("Subscriber#"+MustRandomString())
 	})
 	if err != nil {
 		exitError = err
@@ -120,7 +110,8 @@ SelectLoop:
 			color.Fprintf(os.Stderr, "@{r}Missed %v %v event(s)!\n",
 				ex.ReceivedSeq-ex.ExpectedSeq, ex.EventKind)
 
-		case <-interruptCh:
+		case <-signalCh:
+			log.Println("Signal received, terminating...")
 			if err := srv.Close(); err != nil {
 				log.Fatalln(err)
 			}

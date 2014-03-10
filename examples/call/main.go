@@ -57,9 +57,9 @@ func main() {
 
 	// Initialise RPC service from environmental variables.
 	srv, err := rpc.NewService(func() (rpc.Transport, error) {
-		config := new(zrpc.TransportConfig)
-		config.MustFeedFromEnv("CIDER_ZMQ3_RPC_").MustBeComplete()
-		return config.NewTransport("Call#" + MustRandomString())
+		factory := zrpc.NewTransportFactory()
+		factory.MustReadConfigFromEnv("CIDER_ZMQ3_RPC_").MustBeFullyConfigured()
+		return factory.NewTransport("Call#" + MustRandomString())
 	})
 	if err != nil {
 		log.Fatalf("Failed to initialise RPC: %v\n", err)

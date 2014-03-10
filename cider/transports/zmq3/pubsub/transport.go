@@ -22,7 +22,7 @@ import (
 	zmq "github.com/pebbe/zmq3"
 )
 
-type TransportConfig struct {
+type TransportFactory struct {
 	RouterEndpoint string
 	DealerSndhwm   int
 	DealerRcvhwm   int
@@ -30,41 +30,41 @@ type TransportConfig struct {
 	SubRcvhwm      int
 }
 
-func NewTransportConfig() *TransportConfig {
+func NewTransportFactory() *TransportFactory {
 	// Keep ZeroMQ defaults by default.
-	return &TransportConfig{
+	return &TransportFactory{
 		DealerSndhwm: 1000,
 		DealerRcvhwm: 1000,
 		SubRcvhwm:    1000,
 	}
 }
 
-func (config *TransportConfig) FeedFromEnv(prefix string) error {
-	return nutrition.Env(prefix).Feed(config)
+func (factory *TransportFactory) ReadConfigFromEnv(prefix string) error {
+	return nutrition.Env(prefix).Feed(factory)
 }
 
-func (config *TransportConfig) MustFeedFromEnv(prefix string) *TransportConfig {
-	if err := config.FeedFromEnv(prefix); err != nil {
+func (factory *TransportFactory) MustReadConfigFromEnv(prefix string) *TransportFactory {
+	if err := factory.ReadConfigFromEnv(prefix); err != nil {
 		panic(err)
 	}
-	return config
+	return factory
 }
 
-func (config *TransportConfig) IsComplete() error {
-	if config.RouterEndpoint == "" {
+func (factory *TransportFactory) IsFullyConfigured() error {
+	if factory.RouterEndpoint == "" {
 		return &services.ErrMissingConfig{"ROUTER endpoint", "ZeroMQ 3.x PubSub transport"}
 	}
-	if config.PubEndpoint == "" {
+	if factory.PubEndpoint == "" {
 		return &services.ErrMissingConfig{"PUB endpoint", "ZeroMQ 3.x PubSub transport"}
 	}
 	return nil
 }
 
-func (config *TransportConfig) MustBeComplete() *TransportConfig {
-	if err := config.IsComplete(); err != nil {
+func (factory *TransportFactory) MustBeFullyConfigured() *TransportFactory {
+	if err := factory.IsFullyConfigured(); err != nil {
 		panic(err)
 	}
-	return config
+	return factory
 }
 
 type Transport struct {
@@ -84,9 +84,9 @@ type Transport struct {
 	err error
 }
 
-func NewTransport(identity string, config *TransportConfig) (*Transport, error) {
+func (factory *TransportFactory) NewTransport(identity string) (*Transport, error) {
 	// Make sure the config is complete.
-	if err := config.IsComplete(); err != nil {
+	if err := factory.IsFullyConfigured(); err != nil {
 		return nil, err
 	}
 
@@ -101,17 +101,17 @@ func NewTransport(identity string, config *TransportConfig) (*Transport, error) 
 		return nil, err
 	}
 
-	if err := dealer.SetSndhwm(config.DealerSndhwm); err != nil {
+	if err := dealer.SetSndhwm(factory.DealerSndhwm); err != nil {
 		dealer.Close()
 		return nil, err
 	}
 
-	if err := dealer.SetRcvhwm(config.DealerRcvhwm); err != nil {
+	if err := dealer.SetRcvhwm(factory.DealerRcvhwm); err != nil {
 		dealer.Close()
 		return nil, err
 	}
 
-	if err := dealer.Connect(config.RouterEndpoint); err != nil {
+	if err := dealer.Connect(factory.RouterEndpoint); err != nil {
 		dealer.Close()
 		return nil, err
 	}
@@ -123,13 +123,13 @@ func NewTransport(identity string, config *TransportConfig) (*Transport, error) 
 		return nil, err
 	}
 
-	if err := sub.SetRcvhwm(config.SubRcvhwm); err != nil {
+	if err := sub.SetRcvhwm(factory.SubRcvhwm); err != nil {
 		dealer.Close()
 		sub.Close()
 		return nil, err
 	}
 
-	if err := sub.Connect(config.PubEndpoint); err != nil {
+	if err := sub.Connect(factory.PubEndpoint); err != nil {
 		dealer.Close()
 		sub.Close()
 		return nil, err

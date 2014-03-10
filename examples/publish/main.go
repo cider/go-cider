@@ -50,9 +50,9 @@ func main() {
 
 	// Initialise PubSub service from environmental variables.
 	ps, err := pubsub.NewService(func() (pubsub.Transport, error) {
-		config := new(zpubsub.TransportConfig)
-		config.MustFeedFromEnv("CIDER_ZMQ3_PUBSUB_").MustBeComplete()
-		return zpubsub.NewTransport("Publisher#"+MustRandomString(), config)
+		factory := zpubsub.NewTransportFactory()
+		factory.MustReadConfigFromEnv("CIDER_ZMQ3_PUBSUB_").MustBeFullyConfigured()
+		return factory.NewTransport("Publisher#"+MustRandomString())
 	})
 	if err != nil {
 		exitError = err
