@@ -10,25 +10,17 @@ import (
 	"github.com/cider/cider/broker"
 	"github.com/cider/cider/broker/exchanges/rpc/roundrobin"
 	//"github.com/cider/cider/broker/log"
-	zmq3broker "github.com/cider/cider/broker/transports/zmq3/rpc"
+	wsb "github.com/cider/cider/broker/transports/websocket/rpc"
 
 	// Cider client
 	"github.com/cider/go-cider/cider/services/rpc"
-	zmq3client "github.com/cider/go-cider/cider/transports/zmq3/rpc"
+	wsc "github.com/cider/go-cider/cider/transports/websocket/rpc"
 
 	// Others
 	"github.com/cihub/seelog"
 )
 
-func BenchmarkTransport_ZeroMQ3x____ipc(b *testing.B) {
-	benchmarkZeroMQ3x(b, "ipc://cider-rpc.ipc")
-}
-
-func BenchmarkTransport_ZeroMQ3x_inproc(b *testing.B) {
-	benchmarkZeroMQ3x(b, "inproc://rnd"+mustRandomString())
-}
-
-func benchmarkZeroMQ3x(b *testing.B, endpoint string) {
+func BenchmarkTransport_______WebSocket(b *testing.B) {
 	// Enable logging.
 	// log.UseLogger(seelog.Default)
 
@@ -44,24 +36,27 @@ func benchmarkZeroMQ3x(b *testing.B, endpoint string) {
 		balancer = roundrobin.NewBalancer()
 	)
 
-	// Set up ZeroMQ 3.x IPC RPC endpoint.
-	bro.RegisterEndpointFactory("zmq3_rpc", func() (broker.Endpoint, error) {
-		config := zmq3broker.NewEndpointConfig()
-		config.Endpoint = endpoint
-		return zmq3broker.NewEndpoint(config, balancer)
+	// Set up WebSocket endpoint using a random local port.
+	var endpoint *wsb.Endpoint
+	bro.RegisterEndpointFactory("websocket_rpc", func() (broker.Endpoint, error) {
+		factory := wsb.NewEndpointFactory()
+		factory.Addr = "127.0.0.1:0"
+		endpoint = factory.NewEndpoint(balancer)
+		return endpoint, nil
 	})
 	bro.ListenAndServe()
 	defer bro.Terminate()
 
-	// Give broker some time to spawn the inproc endpoint. It must be running
+	// Give broker some time to spawn the WebSocket endpoint. It must be running
 	// before the client attempts to connect, otherwise it's connection refused.
 	time.Sleep(time.Second)
 
-	// Set up an RPC service instance using ZeroMQ 3.x IPC transport.
+	// Set up an RPC service instance using the WebSocket transport.
 	srv, err := rpc.NewService(func() (rpc.Transport, error) {
-		factory := zmq3client.NewTransportFactory()
-		factory.Endpoint = endpoint
-		return factory.NewTransport("Call#" + mustRandomString())
+		factory := wsc.NewTransportFactory()
+		factory.Server = "ws://" + endpoint.Addr().String()
+		factory.Origin = "http://localhost"
+		return factory.NewTransport("Echo#" + mustRandomString())
 	})
 	if err != nil {
 		b.Fatal(err)
@@ -82,19 +77,19 @@ func benchmarkZeroMQ3x(b *testing.B, endpoint string) {
 
 	payload := []byte("payload")
 	calls := make([]*rpc.RemoteCall, b.N)
-	b.ResetTimer()
 
 	// Start shooting requests.
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		calls[i] = srv.NewRemoteCall("Echo", payload).GoExecute()
 	}
 
+	// Wait for all the responses to come back.
 	for i := 0; i < b.N; i++ {
 		if err := calls[i].Wait(); err != nil {
 			b.Fatal(err)
 		}
 	}
-
 	b.StopTimer()
 
 	// Set GOMAXPROCS to the original value.
