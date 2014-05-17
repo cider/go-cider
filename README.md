@@ -1,4 +1,4 @@
-go-cider
+go-meeko
 ========
 
-Cider client for Go (Golang)
+Meeko client library for Go (Golang)
