@@ -8,12 +8,14 @@
 // the environment variables and then they are accessible as global exported
 // variables.
 //
-// Make sure to call Terminate() before your agent exits.
+// Make sure to listen on Stopped() channel to terminate the agent.
 package agent
 
 import (
 	// Stdlib
 	"os"
+	"os/signal"
+	"syscall"
 
 	// Meeko
 	"github.com/meeko/go-meeko/meeko/services/logging"
@@ -33,9 +35,18 @@ var (
 	RPC     *rpc.Service
 )
 
+var stopCh = make(chan struct{})
+
 func init() {
+	// Start catching signals.
+	signalCh := make(chan os.Signal, 1)
+	signal.Notify(signalCh, syscall.SIGTERM)
+
 	// Read the Meeko alias from the environment.
-	alias := mustBeSet(os.Getenv("MEEKO_ALIAS"))
+	alias := os.Getenv("MEEKO_ALIAS")
+	if alias == "" {
+		panic("MEEKO_ALIAS is not set")
+	}
 
 	// Initialise Logging service from the environment variables.
 	var err error
@@ -77,24 +88,15 @@ func init() {
 		panic(err)
 	}
 	Logging.Info("RPC service initialised")
+
+	go terminateOnSignal(signalCh)
 }
 
-func mustBeSet(v string) string {
-	if v == "" {
-		panic("Required variable is not set")
-	}
-	return v
-}
+func terminateOnSignal(signalCh chan os.Signal) {
+	// Wait for the termination signal.
+	<-signalCh
 
-// Terminate closes all the initialised services.
-//
-// The agent developers must make sure that this functions is called before
-// their agent terminates so that all pending messages are send.
-//
-// This function never returns any error, it just tries to shut down cleanly.
-// Since the function is always called on agent termination, no other behaviour
-// really makes sense.
-func Terminate() {
+	// Try to terminate all the services.
 	Logging.Info("Closing RPC service...")
 	if err := RPC.Close(); err != nil {
 		Logging.Error(err)
@@ -108,5 +110,17 @@ func Terminate() {
 	Logging.Info("Closing Logging service...")
 	Logging.Info("Waiting for the ZeroMQ context to terminate...")
 	Logging.Close()
+
+	// Terminate the ZeroMQ context.
 	zmq.Term()
+
+	// Signal the user.
+	close(stopCh)
+}
+
+// Stopped returns a channel that is closed when the agent receives the stop
+// signal. The agent process should react by exiting as soon as possible,
+// unless it wants to be killed mercilessly.
+func Stopped() <-chan struct{} {
+	return stopCh
 }
