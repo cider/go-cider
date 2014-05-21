@@ -5,8 +5,8 @@
 
 // This package provides some convenient auto-configuration functionality
 // for Meeko agents. All available Meeko service clients are configured from
-// the environment variables and then they are accessible as global exported
-// variables.
+// the environment variables and then they are accessible using the service
+// getter functions.
 //
 // Make sure to listen on Stopped() channel to terminate the agent.
 package agent
@@ -30,9 +30,9 @@ import (
 )
 
 var (
-	Logging *logging.Service
-	PubSub  *pubsub.Service
-	RPC     *rpc.Service
+	srvLogging *logging.Service
+	srvPubSub  *pubsub.Service
+	srvRPC     *rpc.Service
 )
 
 var stopCh = make(chan struct{})
@@ -50,7 +50,7 @@ func init() {
 
 	// Initialise Logging service from the environment variables.
 	var err error
-	Logging, err = logging.NewService(func() (logging.Transport, error) {
+	srvLogging, err = logging.NewService(func() (logging.Transport, error) {
 		factory := zlogging.NewTransportFactory()
 		factory.MustReadConfigFromEnv("MEEKO_ZMQ3_LOGGING_").MustBeFullyConfigured()
 		return factory.NewTransport(alias)
@@ -58,36 +58,36 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
-	Logging.Info("Logging service initialised")
+	srvLogging.Info("Logging service initialised")
 
 	// Initialise PubSub service from the environment variables.
-	PubSub, err = pubsub.NewService(func() (pubsub.Transport, error) {
+	srvPubSub, err = pubsub.NewService(func() (pubsub.Transport, error) {
 		factory := zpubsub.NewTransportFactory()
 		factory.MustReadConfigFromEnv("MEEKO_ZMQ3_PUBSUB_").MustBeFullyConfigured()
 		return factory.NewTransport(alias)
 	})
 	if err != nil {
-		Logging.Critical(err)
-		Logging.Close()
+		srvLogging.Critical(err)
+		srvLogging.Close()
 		zmq.Term()
 		panic(err)
 	}
-	Logging.Info("PubSub service initialised")
+	srvLogging.Info("PubSub service initialised")
 
 	// Initialise RPC service from the environment variables.
-	RPC, err = rpc.NewService(func() (rpc.Transport, error) {
+	srvRPC, err = rpc.NewService(func() (rpc.Transport, error) {
 		factory := zrpc.NewTransportFactory()
 		factory.MustReadConfigFromEnv("MEEKO_ZMQ3_RPC_").MustBeFullyConfigured()
 		return factory.NewTransport(alias)
 	})
 	if err != nil {
-		Logging.Critical(err)
-		Logging.Close()
-		PubSub.Close()
+		srvLogging.Critical(err)
+		srvLogging.Close()
+		srvPubSub.Close()
 		zmq.Term()
 		panic(err)
 	}
-	Logging.Info("RPC service initialised")
+	srvLogging.Info("RPC service initialised")
 
 	go terminateOnSignal(signalCh)
 }
@@ -97,25 +97,40 @@ func terminateOnSignal(signalCh chan os.Signal) {
 	<-signalCh
 
 	// Try to terminate all the services.
-	Logging.Info("Closing RPC service...")
-	if err := RPC.Close(); err != nil {
-		Logging.Error(err)
+	srvLogging.Info("Closing RPC service...")
+	if err := srvRPC.Close(); err != nil {
+		srvLogging.Error(err)
 	}
 
-	Logging.Info("Closing PubSub service...")
-	if err := PubSub.Close(); err != nil {
-		Logging.Error(err)
+	srvLogging.Info("Closing PubSub service...")
+	if err := srvPubSub.Close(); err != nil {
+		srvLogging.Error(err)
 	}
 
-	Logging.Info("Closing Logging service...")
-	Logging.Info("Waiting for the ZeroMQ context to terminate...")
-	Logging.Close()
+	srvLogging.Info("Closing Logging service...")
+	srvLogging.Info("Waiting for the ZeroMQ context to terminate...")
+	srvLogging.Close()
 
 	// Terminate the ZeroMQ context.
 	zmq.Term()
 
 	// Signal the user.
 	close(stopCh)
+}
+
+// Logging returns an instance of the Meeko Logging service.
+func Logging() *logging.Service {
+	return srvLogging
+}
+
+// PubSub returns and instance of the Meeko PubSub service.
+func PubSub() *pubsub.Service {
+	return srvPubSub
+}
+
+// RPC returns an instance of the Meeko RPC service.
+func RPC() *rpc.Service {
+	return srvRPC
 }
 
 // Stopped returns a channel that is closed when the agent receives the stop
